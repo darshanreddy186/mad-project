@@ -1,106 +1,83 @@
 import { create } from 'zustand';
-import { SHOPS } from '@/data/mockData';
-import type { Shop, FilterOptions } from '@/types';
+import { listCategories } from '@/api/categories';
+import { addFavorite, listFavoriteIds, removeFavorite } from '@/api/favorites';
+import { getErrorMessage } from '@/lib/errors';
+import type { FilterOptions, ServiceCategory } from '@/types';
 
-interface AppState {
-  shops: Shop[];
-  favourites: string[];
-  filters: FilterOptions;
-  searchQuery: string;
-  toggleFavourite: (shopId: string) => void;
-  isFavourite: (shopId: string) => boolean;
-  setSearchQuery: (query: string) => void;
-  setFilters: (filters: Partial<FilterOptions>) => void;
-  resetFilters: () => void;
-  getFilteredShops: () => Shop[];
-}
-
-const DEFAULT_FILTERS: FilterOptions = {
+export const DEFAULT_FILTERS: FilterOptions = {
   categories: [],
-  maxDistance: 50,
+  maxDistance: null,
   minRating: 0,
   maxPriceLevel: 4,
   sortBy: 'distance',
 };
 
+interface AppState {
+  // Discovery
+  filters: FilterOptions;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  setFilters: (filters: Partial<FilterOptions>) => void;
+  resetFilters: () => void;
+
+  // Categories (reference data, cached for the session)
+  categories: ServiceCategory[];
+  categoriesLoaded: boolean;
+  loadCategories: (force?: boolean) => Promise<void>;
+
+  // Favourites (persisted in Supabase)
+  favouriteIds: string[];
+  favouritesUserId: string | null;
+  loadFavourites: (userId: string) => Promise<void>;
+  /** Optimistic toggle; reverts and returns an error message on failure. */
+  toggleFavourite: (userId: string, shopId: string) => Promise<string | null>;
+  clearUserData: () => void;
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
-  shops: SHOPS,
-  favourites: ['shop-1', 'shop-4'],
   filters: DEFAULT_FILTERS,
   searchQuery: '',
-
-  toggleFavourite: (shopId: string) => {
-    set((state) => {
-      const isFav = state.favourites.includes(shopId);
-      return {
-        favourites: isFav
-          ? state.favourites.filter((id) => id !== shopId)
-          : [...state.favourites, shopId],
-        shops: state.shops.map((s) =>
-          s.id === shopId ? { ...s, is_favourite: !isFav } : s
-        ),
-      };
-    });
-  },
-
-  isFavourite: (shopId: string) => get().favourites.includes(shopId),
-
-  setSearchQuery: (query: string) => set({ searchQuery: query }),
-
-  setFilters: (newFilters: Partial<FilterOptions>) =>
-    set((state) => ({
-      filters: { ...state.filters, ...newFilters },
-    })),
-
+  setSearchQuery: (searchQuery) => set({ searchQuery }),
+  setFilters: (partial) => set((s) => ({ filters: { ...s.filters, ...partial } })),
   resetFilters: () => set({ filters: DEFAULT_FILTERS }),
 
-  getFilteredShops: () => {
-    const { shops, filters, searchQuery } = get();
-    let result = [...shops];
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) ||
-          s.description.toLowerCase().includes(q) ||
-          s.city.toLowerCase().includes(q) ||
-          s.categories.some((c) => c.toLowerCase().includes(q)) ||
-          s.vehicle_brands.some((b) => b.toLowerCase().includes(q))
-      );
+  categories: [],
+  categoriesLoaded: false,
+  loadCategories: async (force = false) => {
+    if (get().categoriesLoaded && !force) return;
+    try {
+      const categories = await listCategories();
+      set({ categories, categoriesLoaded: true });
+    } catch (err) {
+      console.warn('[categories] load failed', getErrorMessage(err));
     }
-
-    if (filters.categories.length > 0) {
-      result = result.filter((s) =>
-        s.categories.some((c) => filters.categories.includes(c))
-      );
-    }
-
-    if (filters.maxDistance < 50) {
-      result = result.filter((s) => (s.distance ?? 0) <= filters.maxDistance);
-    }
-
-    if (filters.minRating > 0) {
-      result = result.filter((s) => s.rating >= filters.minRating);
-    }
-
-    if (filters.maxPriceLevel < 4) {
-      result = result.filter((s) => s.price_level <= filters.maxPriceLevel);
-    }
-
-    switch (filters.sortBy) {
-      case 'rating':
-        result.sort((a, b) => b.rating - a.rating);
-        break;
-      case 'name':
-        result.sort((a, b) => a.name.localeCompare(b.name));
-        break;
-      case 'distance':
-      default:
-        result.sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
-        break;
-    }
-
-    return result;
   },
+
+  favouriteIds: [],
+  favouritesUserId: null,
+  loadFavourites: async (userId) => {
+    try {
+      const ids = await listFavoriteIds(userId);
+      set({ favouriteIds: ids, favouritesUserId: userId });
+    } catch (err) {
+      console.warn('[favourites] load failed', getErrorMessage(err));
+    }
+  },
+  toggleFavourite: async (userId, shopId) => {
+    const wasFav = get().favouriteIds.includes(shopId);
+    set((s) => ({
+      favouriteIds: wasFav ? s.favouriteIds.filter((id) => id !== shopId) : [shopId, ...s.favouriteIds],
+    }));
+    try {
+      if (wasFav) await removeFavorite(userId, shopId);
+      else await addFavorite(userId, shopId);
+      return null;
+    } catch (err) {
+      set((s) => ({
+        favouriteIds: wasFav ? [shopId, ...s.favouriteIds] : s.favouriteIds.filter((id) => id !== shopId),
+      }));
+      return getErrorMessage(err);
+    }
+  },
+  clearUserData: () => set({ favouriteIds: [], favouritesUserId: null }),
 }));

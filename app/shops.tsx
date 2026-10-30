@@ -1,59 +1,71 @@
-import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, Pressable, TextInput, FlatList, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Search, SlidersHorizontal } from 'lucide-react-native';
-import { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ArrowLeft, Search, SlidersHorizontal, X, SearchX } from 'lucide-react-native';
 import { Colors } from '@/constants/theme';
+import { DISTANCE_UNIT } from '@/constants/config';
 import { useAppStore } from '@/store/useAppStore';
 import { ShopCard } from '@/components/ShopCard';
-import { CATEGORIES } from '@/data/mockData';
-import { ModalSheet } from '@/components/ModalSheet';
-import { Button } from '@/components/Button';
-import type { FilterOptions } from '@/types';
+import { FilterSheet, activeFilterCount } from '@/components/FilterSheet';
+import { Chip } from '@/components/Chip';
+import { EmptyState, ErrorView, LoadingView } from '@/components/StateViews';
+import { useShopSearch } from '@/hooks/useShopSearch';
+import { priceLevelSymbols } from '@/lib/format';
+import type { SortOption } from '@/types';
+
+const SORT_LABEL: Record<SortOption, string> = {
+  distance: 'Nearest',
+  rating: 'Top rated',
+  name: 'A–Z',
+};
 
 export default function ShopsListScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ category?: string; sort?: string; q?: string }>();
   const [showFilters, setShowFilters] = useState(false);
-  const [localFilters, setLocalFilters] = useState<FilterOptions>({
-    categories: [],
-    maxDistance: 50,
-    minRating: 0,
-    maxPriceLevel: 4,
-    sortBy: 'distance',
-  });
 
-  const getFilteredShops = useAppStore((s) => s.getFilteredShops);
+  const categories = useAppStore((s) => s.categories);
   const filters = useAppStore((s) => s.filters);
   const setFilters = useAppStore((s) => s.setFilters);
   const resetFilters = useAppStore((s) => s.resetFilters);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
 
-  const shops = getFilteredShops();
+  // Support deep links such as /shops?category=wheels-tyres&sort=rating
+  useEffect(() => {
+    if (params.category) setFilters({ categories: [params.category] });
+    if (params.sort === 'rating' || params.sort === 'distance' || params.sort === 'name') {
+      setFilters({ sortBy: params.sort });
+    }
+    if (params.q) setSearchQuery(params.q);
+  }, [params.category, params.sort, params.q, setFilters, setSearchQuery]);
 
-  const toggleCategory = (slug: string) => {
-    setLocalFilters((prev) => ({
-      ...prev,
-      categories: prev.categories.includes(slug)
-        ? prev.categories.filter((c) => c !== slug)
-        : [...prev.categories, slug],
-    }));
-  };
+  const { shops, loading, loadingMore, refreshing, error, hasLocation, refresh, retry, loadMore } =
+    useShopSearch();
 
-  const applyFilters = () => {
-    setFilters(localFilters);
-    setShowFilters(false);
-  };
-
-  const clearFilters = () => {
+  const activeCount = activeFilterCount(filters);
+  const clearAll = () => {
     resetFilters();
-    setLocalFilters({
-      categories: [],
-      maxDistance: 50,
-      minRating: 0,
-      maxPriceLevel: 4,
-      sortBy: 'distance',
-    });
-    setShowFilters(false);
+    setSearchQuery('');
   };
+
+  const activeChips: { key: string; label: string; onRemove: () => void }[] = [
+    ...filters.categories.map((slug) => ({
+      key: `c-${slug}`,
+      label: categories.find((c) => c.slug === slug)?.name ?? slug,
+      onRemove: () => setFilters({ categories: filters.categories.filter((c) => c !== slug) }),
+    })),
+    ...(filters.maxDistance !== null
+      ? [{ key: 'd', label: `Within ${filters.maxDistance}${DISTANCE_UNIT}`, onRemove: () => setFilters({ maxDistance: null }) }]
+      : []),
+    ...(filters.minRating > 0
+      ? [{ key: 'r', label: `${filters.minRating}+ stars`, onRemove: () => setFilters({ minRating: 0 }) }]
+      : []),
+    ...(filters.maxPriceLevel < 4
+      ? [{ key: 'p', label: `Up to ${priceLevelSymbols(filters.maxPriceLevel)}`, onRemove: () => setFilters({ maxPriceLevel: 4 }) }]
+      : []),
+  ];
 
   return (
     <SafeAreaView
@@ -62,7 +74,14 @@ export default function ShopsListScreen() {
       style={{ backgroundColor: Colors.charcoal[950] }}>
       <View className="flex-row items-center gap-3 px-5 pt-4 pb-3">
         <Pressable
-          className="flex-1 flex-row items-center gap-3 rounded-2xl px-4 py-3"
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+          accessibilityLabel="Go back"
+          className="h-11 w-11 items-center justify-center rounded-2xl"
+          style={{ backgroundColor: Colors.charcoal[800] }}>
+          <ArrowLeft size={20} color={Colors.white} />
+        </Pressable>
+        <View
+          className="flex-1 flex-row items-center gap-3 rounded-2xl px-4"
           style={{ backgroundColor: Colors.charcoal[800] }}>
           <Search size={20} color={Colors.charcoal[400]} />
           <TextInput
@@ -70,147 +89,103 @@ export default function ShopsListScreen() {
             onChangeText={setSearchQuery}
             placeholder="Search shops, services, brands..."
             placeholderTextColor={Colors.charcoal[500]}
-            className="flex-1 text-sm"
+            returnKeyType="search"
+            autoCorrect={false}
+            accessibilityLabel="Search shops"
+            className="flex-1 py-3 text-sm"
             style={{ color: Colors.white }}
           />
-        </Pressable>
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery('')} hitSlop={8} accessibilityLabel="Clear search">
+              <X size={16} color={Colors.charcoal[400]} />
+            </Pressable>
+          )}
+        </View>
         <Pressable
-          onPress={() => {
-            setLocalFilters(filters);
-            setShowFilters(true);
-          }}
+          onPress={() => setShowFilters(true)}
+          accessibilityLabel="Filters"
           className="h-11 w-11 items-center justify-center rounded-2xl"
-          style={{ backgroundColor: Colors.charcoal[800] }}>
-          <SlidersHorizontal size={20} color={Colors.charcoal[200]} />
+          style={{ backgroundColor: activeCount ? Colors.accent[600] : Colors.charcoal[800] }}>
+          <SlidersHorizontal size={20} color={Colors.white} />
+          {activeCount > 0 && (
+            <View
+              className="absolute -right-1 -top-1 h-5 w-5 items-center justify-center rounded-full"
+              style={{ backgroundColor: Colors.white }}>
+              <Text className="text-[10px] font-bold" style={{ color: Colors.accent[600] }}>
+                {activeCount}
+              </Text>
+            </View>
+          )}
         </Pressable>
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}>
-        <Text className="mb-3 text-lg font-bold text-white">
-          {shops.length} {shops.length === 1 ? 'Shop' : 'Shops'} Found
-        </Text>
-
-        {shops.length === 0 ? (
-          <View className="mt-20 items-center">
-            <Text className="text-base font-semibold text-white">No shops found</Text>
-            <Text className="mt-2 text-sm" style={{ color: Colors.charcoal[400] }}>
-              Try adjusting your search or filters
-            </Text>
-            <View className="mt-4">
-              <Button label="Clear Filters" variant="outline" onPress={clearFilters} />
-            </View>
-          </View>
-        ) : (
-          shops.map((shop) => <ShopCard key={shop.id} shop={shop} />)
-        )}
-      </ScrollView>
-
-      <ModalSheet
-        visible={showFilters}
-        onClose={() => setShowFilters(false)}
-        title="Filters">
-        <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 500 }}>
-          <Text className="mb-3 text-sm font-semibold text-white">Category</Text>
-          <View className="flex-row flex-wrap gap-2">
-            {CATEGORIES.map((cat) => {
-              const selected = localFilters.categories.includes(cat.slug);
-              return (
-                <Pressable
-                  key={cat.id}
-                  onPress={() => toggleCategory(cat.slug)}
-                  className="rounded-full px-3 py-2"
-                  style={{
-                    backgroundColor: selected ? Colors.accent[600] : Colors.charcoal[800],
-                    borderWidth: 1,
-                    borderColor: selected ? Colors.accent[500] : Colors.charcoal[700],
-                  }}>
-                  <Text
-                    className="text-xs font-medium"
-                    style={{ color: selected ? Colors.white : Colors.charcoal[200] }}>
-                    {cat.name}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Text className="mb-2 mt-5 text-sm font-semibold text-white">
-            Min Rating: {localFilters.minRating.toFixed(1)}
-          </Text>
-          <View className="flex-row gap-2">
-            {[0, 3, 3.5, 4, 4.5].map((r) => (
-              <Pressable
-                key={r}
-                onPress={() => setLocalFilters((p) => ({ ...p, minRating: r }))}
-                className="flex-1 items-center rounded-xl py-2.5"
-                style={{
-                  backgroundColor: localFilters.minRating === r ? Colors.accent[600] : Colors.charcoal[800],
-                }}>
-                <Text
-                  className="text-xs font-semibold"
-                  style={{ color: localFilters.minRating === r ? Colors.white : Colors.charcoal[300] }}>
-                  {r === 0 ? 'Any' : `${r}+`}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <Text className="mb-2 mt-5 text-sm font-semibold text-white">
-            Max Price Level
-          </Text>
-          <View className="flex-row gap-2">
-            {[1, 2, 3, 4].map((p) => (
-              <Pressable
-                key={p}
-                onPress={() => setLocalFilters((prev) => ({ ...prev, maxPriceLevel: p }))}
-                className="flex-1 items-center rounded-xl py-2.5"
-                style={{
-                  backgroundColor: localFilters.maxPriceLevel === p ? Colors.accent[600] : Colors.charcoal[800],
-                }}>
-                <Text
-                  className="text-xs font-bold"
-                  style={{ color: localFilters.maxPriceLevel === p ? Colors.white : Colors.charcoal[300] }}>
-                  {'£'.repeat(p)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <Text className="mb-2 mt-5 text-sm font-semibold text-white">Sort By</Text>
-          <View className="flex-row gap-2">
-            {[
-              { label: 'Distance', value: 'distance' as const },
-              { label: 'Rating', value: 'rating' as const },
-              { label: 'Name', value: 'name' as const },
-            ].map((opt) => (
-              <Pressable
-                key={opt.value}
-                onPress={() => setLocalFilters((p) => ({ ...p, sortBy: opt.value }))}
-                className="flex-1 items-center rounded-xl py-2.5"
-                style={{
-                  backgroundColor: localFilters.sortBy === opt.value ? Colors.accent[600] : Colors.charcoal[800],
-                }}>
-                <Text
-                  className="text-xs font-semibold"
-                  style={{ color: localFilters.sortBy === opt.value ? Colors.white : Colors.charcoal[300] }}>
-                  {opt.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <View className="mt-6 flex-row gap-3">
-            <View className="flex-1">
-              <Button label="Reset" variant="outline" onPress={clearFilters} fullWidth />
-            </View>
-            <View className="flex-1">
-              <Button label="Apply Filters" onPress={applyFilters} fullWidth />
-            </View>
-          </View>
+      {activeChips.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          className="max-h-12 flex-grow-0"
+          contentContainerStyle={{ paddingHorizontal: 20, gap: 8, paddingBottom: 8 }}>
+          {activeChips.map((chip) => (
+            <Chip
+              key={chip.key}
+              label={chip.label}
+              selected
+              size="sm"
+              onPress={chip.onRemove}
+              icon={<X size={12} color={Colors.white} />}
+            />
+          ))}
         </ScrollView>
-      </ModalSheet>
+      )}
+
+      {loading ? (
+        <LoadingView label="Searching shops…" />
+      ) : error && shops.length === 0 ? (
+        <ErrorView message={error} onRetry={retry} />
+      ) : (
+        <FlatList
+          data={shops}
+          keyExtractor={(s) => s.id}
+          renderItem={({ item }) => <ShopCard shop={item} />}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24, flexGrow: 1 }}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          refreshing={refreshing}
+          onRefresh={refresh}
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={6}
+          windowSize={7}
+          ListHeaderComponent={
+            <View className="mb-3 flex-row items-center justify-between">
+              <Text className="text-lg font-bold text-white">
+                {shops.length} {shops.length === 1 ? 'Shop' : 'Shops'}
+                {shops.length > 0 && loadingMore ? '+' : ''}
+              </Text>
+              <Text className="text-xs" style={{ color: Colors.charcoal[400] }}>
+                {filters.sortBy === 'distance' && !hasLocation ? 'Top rated (no location)' : SORT_LABEL[filters.sortBy]}
+              </Text>
+            </View>
+          }
+          ListEmptyComponent={
+            <EmptyState
+              icon={SearchX}
+              title="No shops found"
+              message={
+                hasLocation && filters.maxDistance !== null
+                  ? 'Try a larger distance or fewer filters.'
+                  : 'Try adjusting your search or filters.'
+              }
+              actionLabel={activeCount || searchQuery ? 'Clear search & filters' : undefined}
+              onAction={clearAll}
+            />
+          }
+          ListFooterComponent={
+            loadingMore ? <ActivityIndicator className="py-4" color={Colors.accent[500]} /> : undefined
+          }
+        />
+      )}
+
+      <FilterSheet visible={showFilters} onClose={() => setShowFilters(false)} hasLocation={hasLocation} />
     </SafeAreaView>
   );
 }

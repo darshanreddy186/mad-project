@@ -4,7 +4,7 @@ import { Colors } from '@/constants/theme';
 interface ButtonProps {
   label: string;
   onPress?: () => void;
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
   size?: 'sm' | 'md' | 'lg';
   disabled?: boolean;
   loading?: boolean;
@@ -27,6 +27,7 @@ export function Button({
     secondary: Colors.electric[600],
     outline: 'transparent',
     ghost: 'transparent',
+    danger: `${Colors.error[500]}20`,
   };
 
   const textColors: Record<string, string> = {
@@ -34,6 +35,7 @@ export function Button({
     secondary: Colors.white,
     outline: Colors.white,
     ghost: Colors.charcoal[200],
+    danger: Colors.error[500],
   };
 
   const sizeStyles = {
@@ -48,6 +50,9 @@ export function Button({
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
       className={`flex-row items-center justify-center rounded-xl ${fullWidth ? 'w-full' : ''}`}
       style={{
         backgroundColor: variant === 'outline' || variant === 'ghost' ? 'transparent' : bgColors[variant],
