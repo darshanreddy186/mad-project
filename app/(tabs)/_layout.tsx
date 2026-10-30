@@ -1,8 +1,14 @@
 import { Tabs } from 'expo-router';
 import { Home, Compass, Map, Heart, User } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/theme';
+import { useNotificationStore } from '@/store/useNotificationStore';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+  const unread = useNotificationStore((s) => s.unreadCount);
+  const bottom = Math.max(insets.bottom, 8);
+
   return (
     <Tabs
       screenOptions={{
@@ -13,14 +19,15 @@ export default function TabLayout() {
           backgroundColor: Colors.charcoal[900],
           borderTopColor: Colors.charcoal[800],
           borderTopWidth: 1,
-          height: 60,
-          paddingBottom: 8,
+          height: 52 + bottom,
+          paddingBottom: bottom,
           paddingTop: 8,
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
         },
+        sceneStyle: { backgroundColor: Colors.charcoal[950] },
       }}>
       <Tabs.Screen
         name="index"
@@ -62,6 +69,8 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profile',
+          tabBarBadge: unread > 0 ? (unread > 9 ? '9+' : unread) : undefined,
+          tabBarBadgeStyle: { backgroundColor: Colors.accent[600], fontSize: 10 },
           tabBarIcon: ({ size, color }) => (
             <User size={size} color={color} strokeWidth={2} />
           ),

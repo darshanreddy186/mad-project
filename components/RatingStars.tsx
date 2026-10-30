@@ -39,8 +39,8 @@ export function RatingStars({
         <View className="flex-row items-center gap-1">
           <Text
             className="text-sm font-semibold"
-            style={{ color: Colors.charcoal[900] }}>
-            {rating.toFixed(1)}
+            style={{ color: Colors.white }}>
+            {rating > 0 ? rating.toFixed(1) : 'New'}
           </Text>
           {reviewCount !== undefined && (
             <Text

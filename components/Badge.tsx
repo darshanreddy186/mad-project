@@ -1,5 +1,6 @@
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
 import { Colors } from '@/constants/theme';
+import { CURRENCY_SYMBOL } from '@/constants/config';
 
 interface PriceLevelProps {
   level: 1 | 2 | 3 | 4;
@@ -15,7 +16,7 @@ export function PriceLevel({ level }: PriceLevelProps) {
           style={{
             color: i <= level ? Colors.accent[500] : Colors.charcoal[600],
           }}>
-          £
+          {CURRENCY_SYMBOL}
         </Text>
       ))}
     </View>

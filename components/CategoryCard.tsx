@@ -2,6 +2,7 @@ import { Pressable, View, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as LucideIcons from 'lucide-react-native';
 import { Colors } from '@/constants/theme';
+import { useAppStore } from '@/store/useAppStore';
 import type { ServiceCategory } from '@/types';
 
 interface CategoryCardProps {
@@ -11,6 +12,11 @@ interface CategoryCardProps {
 
 export function CategoryCard({ category, variant = 'grid' }: CategoryCardProps) {
   const router = useRouter();
+  const setFilters = useAppStore((s) => s.setFilters);
+  const open = () => {
+    setFilters({ categories: [category.slug] });
+    router.push('/shops');
+  };
 
   const IconComponent = (
     LucideIcons as unknown as Record<
@@ -22,7 +28,9 @@ export function CategoryCard({ category, variant = 'grid' }: CategoryCardProps) 
   if (variant === 'row') {
     return (
       <Pressable
-        onPress={() => router.push(`/shops?category=${category.slug}`)}
+        onPress={open}
+        accessibilityRole="button"
+        accessibilityLabel={category.name}
         className="mr-3 w-32 items-center rounded-2xl p-4"
         style={{ backgroundColor: Colors.charcoal[800] }}>
         <View
@@ -41,7 +49,9 @@ export function CategoryCard({ category, variant = 'grid' }: CategoryCardProps) 
 
   return (
     <Pressable
-      onPress={() => router.push(`/shops?category=${category.slug}`)}
+      onPress={open}
+        accessibilityRole="button"
+        accessibilityLabel={category.name}
       className="flex-1 items-center rounded-2xl p-5"
       style={{ backgroundColor: Colors.charcoal[800] }}>
       <View

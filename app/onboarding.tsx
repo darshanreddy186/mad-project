@@ -1,8 +1,10 @@
 import { useState, useRef } from 'react';
 import { View, Text, Pressable, ScrollView, Dimensions, Image } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Wrench, MapPin, Star, ShieldCheck } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/theme';
+import { STORAGE_KEYS } from '@/constants/config';
+import { MARKETING_IMAGES } from '@/constants/images';
 import { Button } from '@/components/Button';
 
 const { width } = Dimensions.get('window');
@@ -10,36 +12,28 @@ const { width } = Dimensions.get('window');
 const ONBOARDING_SLIDES = [
   {
     id: 1,
-    image:
-      'https://images.pexels.com/photos/3806288/pexels-photo-3806288.jpeg',
-    icon: 'Wrench',
+    image: MARKETING_IMAGES.onboarding[0],
     title: 'Discover Modification Shops',
     subtitle:
       'Browse hundreds of car modification specialists near you — from performance tuning to custom paint and bodywork.',
   },
   {
     id: 2,
-    image:
-      'https://images.pexels.com/photos/2096523/pexels-photo-2096523.jpeg',
-    icon: 'MapPin',
+    image: MARKETING_IMAGES.onboarding[1],
     title: 'Find Shops Nearby',
     subtitle:
       'Use your location to discover the best-rated modification shops around you, with real-time distance and directions.',
   },
   {
     id: 3,
-    image:
-      'https://images.pexels.com/photos/3786091/pexels-photo-3786091.jpeg',
-    icon: 'Star',
+    image: MARKETING_IMAGES.onboarding[2],
     title: 'Reviews & Ratings',
     subtitle:
       'Read honest customer reviews and see real before-and-after portfolio photos before you choose a shop.',
   },
   {
     id: 4,
-    image:
-      'https://images.pexels.com/photos/2533092/pexels-photo-2533092.jpeg',
-    icon: 'ShieldCheck',
+    image: MARKETING_IMAGES.onboarding[3],
     title: 'Book with Confidence',
     subtitle:
       'Request quotes, book appointments and message shops directly. Verified shops for trusted service every time.',
@@ -49,26 +43,27 @@ const ONBOARDING_SLIDES = [
 export default function OnboardingScreen() {
   const router = useRouter();
   const [activeIndex, setActiveIndex] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
+
+  const finish = async () => {
+    await AsyncStorage.setItem(STORAGE_KEYS.onboardingComplete, '1').catch(() => {});
+    router.replace('/(auth)/login');
+  };
 
   const handleNext = () => {
     if (activeIndex < ONBOARDING_SLIDES.length - 1) {
       scrollRef.current?.scrollTo({ x: (activeIndex + 1) * width, animated: true });
     } else {
-      router.replace('/(auth)/login');
+      finish();
     }
   };
 
-  const handleSkip = () => {
-    router.replace('/(auth)/login');
-  };
+  const handleSkip = finish;
 
   const onScroll = (e: any) => {
     const index = Math.round(e.nativeEvent.contentOffset.x / width);
     setActiveIndex(index);
   };
-
-  const currentSlide = ONBOARDING_SLIDES[activeIndex];
 
   return (
     <View className="flex-1" style={{ backgroundColor: Colors.charcoal[950] }}>
